@@ -1,0 +1,74 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/asynchronous-flows/asyncflows/main/schemas/asyncflows_schema.json
+
+default_model:
+  model: ollama/llama3
+flow:
+  # Iterate over the PDF filepaths
+  extract_pdf_texts:
+    for: filepath
+    in:
+      var: pdf_filepaths
+    flow:
+      # For each filepath, `extract_pdf_text` extracts text from PDF files
+      extractor:
+        action: extract_pdf_text
+        file:
+          var: filepath
+  # `retrieve` performs a vector search, fast for large datasets
+  retrieval:
+    action: retrieve
+    k: 20
+    documents:
+      lambda: |
+        [page
+         for flow in extract_pdf_texts
+         for page in flow.extractor.pages]
+    texts:
+      lambda: |
+        [page.title + "\n\n" + page.text  # Include the title in the embeddings
+         for flow in extract_pdf_texts
+         for page in flow.extractor.pages]
+    query:
+      var: interests
+  # `rerank` picks the most appropriate documents, it's slower than retrieve, but better at matching against the query
+  reranking:
+    action: rerank
+    k: 5
+    documents:
+      link: retrieval.result
+    texts:
+      lambda: |
+        [page.text
+         for page in retrieval.result]
+    query:
+      link: extract_query.result
+  # `chatbot` prompts the LLM to summarize the top papers
+  chatbot:
+    action: prompt
+    quote_style: xml
+    prompt:
+      - role: system
+      - text: |
+          You are an expert research assisstant, who has a in depth understanding of all technical fields,
+          who can look at a number of papers and then recommend the one that would be most useful to the user.
+      - role: user
+      - heading: Relevant Pages
+        text: |
+          {% for page in reranking.result -%}
+            {{ page.title }}, page number {{ page.page_number }}
+            ---
+            {{ page.text }}
+            ---
+          {% endfor %}
+      - heading: Interests
+        var: interests
+      - text: |
+          Clearly and concisely respond to the Interests provided by the user, suggest exactly one paper which
+          has been provided in relavent pages. Provide your suggestion between <response> and </response> tags.
+  extract_chatbot:
+    action: extract_xml_tag
+    tag: response
+    text:
+      link: chatbot.result
+      
+default_output: extract_chatbot.result

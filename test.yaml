@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/asynchronous-flows/asyncflows/main/schemas/asyncflows_schema.json
+
+default_model:
+  model: ollama/llama3
+flow:
+  main_chatbot:
+    action: prompt
+    prompt:
+      - role: system
+      - text: You are having a conversation with {{username}}, say hi
+
+default_output: main_chatbot.result

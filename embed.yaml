@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=schemas/custom_asyncflows_schema.json
+
+default_model:
+  model: ollama/llama3
+flow:
+  # Iterate over the PDF filepaths
+  extract_pdf_texts:
+    for: filepath
+    in:
+      var: pdf_filepaths
+    flow:
+      # For each filepath, `extract_pdf_text` extracts text from PDF files
+      extractor:
+        action: extract_pdf_custom
+        file:
+          var: filepath
+  embedding:
+    action: embed
+    documents:
+      lambda: |
+        [page
+        for flow in extract_pdf_texts
+        for page in flow.extractor.pages]
+    texts:
+      lambda: |
+        [page.title + "\n\n" + page.text  # Include the title in the embeddings
+        for flow in extract_pdf_texts
+        for page in flow.extractor.pages]
+  write_action:
+    action: sdb_write
+    embeds:
+      link: embedding.embeds
+    documents:
+      link: embedding.documents
+default_output: write_action.result
